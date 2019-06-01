@@ -1,147 +1,244 @@
 
-%% load EEG data
+%% setpath and initiate eeglab
 cd 'C:\Users\shawn\Desktop\Emotion'
+% eeglab
 
-subj_id = 2;
-filename = sprintf('EEG_Subj_%d_64ch.set',subj_id);
-EEG = pop_loadset('filename',filename,'filepath','C:\Users\shawn\Desktop\Emotion\');
+%% figure 1: sorted model probability over time for each subject
 
-%% figure 1: plot model probability over time 
-subj_id = 2;
-numMod = 20;
-
-amicaout_dir = sprintf('amicaout\\emotion_S%d_M%d_72ch_interp',subj_id,numMod);
-ourdir = ['C:\Users\shawn\Desktop\Emotion\' amicaout_dir]; 
-modout = loadmodout15(ourdir);
-
-srate = 250; 
-winLen = 5;     % sec
-walkLen = 1;    % sec
-pnts = size(modout.v,2);
-
-numMod = modout.num_models;
-v = zeros(ceil(pnts/srate/walkLen),numMod);
-
-for it = 1:ceil(pnts/srate/walkLen)
-    dataRange = (it-1)*walkLen*srate+1 : min(pnts, (it-1)*walkLen*srate+winLen*srate);
-    keepIndex = find(sum(modout.v(:,dataRange),1)~=0);
-    v(it,:) = mean(10.^modout.v(:,dataRange(keepIndex)),2);
-end
-
-figure, imagesc(v'); colorbar
-xlabel('Time (sec)'); ylabel('Model ID'); 
-set(gca,'fontsize',12); 
-set(gcf,'position',[50,150,1450,450]);
-
-
-hold on,
-% add event markers
-for it = 1:length(EEG.event)
-    if ~strcmp(EEG.event(it).type,'press') && ~strcmp(EEG.event(it).type,'press1') && ...
-            ~strcmp(EEG.event(it).type,'100') && ~strcmp(EEG.event(it).type,'enter') && ...
-            ~strcmp(EEG.event(it).type,'768') && ~strcmp(EEG.event(it).type,'4') && ...
-            ~strcmp(EEG.event(it).type,'instruct3') && ~strcmp(EEG.event(it).type,'instruct4') && ...
-            ~strcmp(EEG.event(it).type,'prebase_instruct') && ~strcmp(EEG.event(it).type,'postbase_instruct')
-        x = EEG.event(it).latency/EEG.srate;
-        h = plot([x x],[0.5 numMod+0.5],'w--','LineWidth',1);
-        if ~strcmp(EEG.event(it).type,'exit')
-            text(x,0.5,EEG.event(it).type,'Rotation',45,'fontsize',12);
+for subj_id = 1:35
+    try
+        % load EEG data
+        filepath = '\\sccn.ucsd.edu\projects\Shawn\2019_Emogery\';
+        filename = sprintf('EEG_Subj_%d_64ch.set',subj_id);
+        EEG = pop_loadset('filename',filename,'filepath',filepath);
+        
+        % load AMICA output
+        numMod = 20;
+        ourdir = [filepath, sprintf('amicaout\\emotion_S%d_M%d_64ch',subj_id,numMod)];
+        modout = loadmodout15(ourdir);
+        
+        % extract and smoooth model probability time series
+        winLen = 5;     % sec
+        walkLen = 1;    % sec
+        srate = EEG.srate;
+        pnts = size(modout.v,2);
+        
+        numMod = modout.num_models;
+        v = zeros(ceil(pnts/srate/walkLen),numMod);
+        
+        for it = 1:ceil(pnts/srate/walkLen)
+            dataRange = (it-1)*walkLen*srate+1 : min(pnts, (it-1)*walkLen*srate+winLen*srate);
+            keepIndex = find(sum(modout.v(:,dataRange),1)~=0);
+            v(it,:) = mean(10.^modout.v(:,dataRange(keepIndex)),2);
         end
+        
+        % plot model probability time series
+        figure, imagesc(v'); colorbar
+        xlabel('Time (sec)'); ylabel('Model ID');
+        set(gca,'fontsize',12);
+        set(gcf,'position',[50,150,1900,600]);
+        
+        % add event markers
+        hold on,
+        i = 1;
+        j = 1;
+        Stage = {};
+        PreTask = {};
+        for it = 1:length(EEG.event)
+            if ~strcmp(EEG.event(it).type,'press') &&  ...
+                    ~strcmp(EEG.event(it).type,'100') && ~strcmp(EEG.event(it).type,'enter') && ...
+                    ~strcmp(EEG.event(it).type,'768') && ~strcmp(EEG.event(it).type,'4') && ...
+                    ~strcmp(EEG.event(it).type,'instruct3') && ~strcmp(EEG.event(it).type,'instruct4') && ...
+                    ~strcmp(EEG.event(it).type,'prebase_instruct') &&...
+                    ~strcmp(EEG.event(it).type,'postbase_instruct')
+                x = EEG.event(it).latency/EEG.srate;
+                
+                if strcmp(EEG.event(it).type,'press1')
+                    h = plot([x x],[0.5 numMod+0.5],'w--','LineWidth',1);
+                    
+                elseif strcmp(EEG.event(it).type,'awe') || strcmp(EEG.event(it).type,'joy')||...
+                        strcmp(EEG.event(it).type,'happy') || strcmp(EEG.event(it).type,'love')||...
+                        strcmp(EEG.event(it).type,'compassion') || strcmp(EEG.event(it).type,'content')||...
+                        strcmp(EEG.event(it).type,'relief')|| strcmp(EEG.event(it).type,'excite')
+                    h = plot([x x],[0.5 numMod+0.5],'g-','LineWidth',1);
+                    Stage{1,i} = EEG.event(it).type;
+                    i = i+1;
+                    
+                elseif strcmp(EEG.event(it).type,'frustration') || strcmp(EEG.event(it).type,'anger')||...
+                        strcmp(EEG.event(it).type,'sad') || strcmp(EEG.event(it).type,'grief')||...
+                        strcmp(EEG.event(it).type,'jealousy') || strcmp(EEG.event(it).type,'fear')||...
+                        strcmp(EEG.event(it).type,'disgust')
+                    h = plot([x x],[0.5 numMod+0.5],'r-','LineWidth',1);
+                    Stage{1,i} = EEG.event(it).type;
+                    i = i+1;
+                    
+                elseif strcmp(EEG.event(it).type,'instruct1') || strcmp(EEG.event(it).type,'prebase')||...
+                        strcmp(EEG.event(it).type,'instruct2') || strcmp(EEG.event(it).type,'relax')
+                    h = plot([x x],[0.5 numMod+0.5],'w-','LineWidth',1);
+                    PreTask{1,j} = EEG.event(it).type;
+                    j = j+1;
+                else
+                    h = plot([x x],[0.5 numMod+0.5],'w-','LineWidth',1);
+                end
+                
+                if ~strcmp(EEG.event(it).type,'exit') && ~strcmp(EEG.event(it).type,'press1')
+                    text(x,0.5,EEG.event(it).type,'Rotation',30,'fontsize',12);
+                end
+            end
+        end
+        
+        figname = sprintf('figures\\modelprob_S%dM%d_64ch.png',subj_id,numMod);
+        saveas(gcf,figname)
+        close
+        
+        numStage = 15;
+        
+        % compute mean probability in each stage
+        modProbXState = zeros(numMod,numStage);
+        
+        for segmentID = 1:numStage
+            dataRange = [];
+            startEvent = Stage(1,segmentID); endEvent = 'exit';
+            
+            startIdx = find(strcmp({EEG.event.type},startEvent));
+            
+            % sampling after press1
+            %     press1 = find(strcmp({EEG.event.type},'press1'));  % sampling after press1
+            %     startIdx = press1(find(find(strcmp({EEG.event.type},'press1'))>startIdx,1));
+            
+            exitIdx = find(strcmp({EEG.event.type},endEvent));
+            endIdx = exitIdx(find(find(strcmp({EEG.event.type},endEvent))>startIdx,1));
+            
+            if length(startIdx) > 1
+                startIdx = startIdx(end);
+            end
+            if segmentID == 10 && isempty(endIdx)
+                dataRange = ceil(EEG.event(startIdx).latency) : EEG.pnts;
+            end
+            
+            if isempty(dataRange)
+                dataRange = ceil(EEG.event(startIdx).latency) : floor(EEG.event(endIdx).latency);
+            end
+            keepIndex = find(sum(modout.v(:,dataRange),1) ~= 0);
+            modProbXState(:,segmentID) = mean(10.^modout.v(:,dataRange(keepIndex)),2);
+        end
+        
+        % compute mean probability in pre-task stage
+        PretaskModProb = zeros(numMod,size(PreTask,2));
+        
+        for segmentID = 1:size(PreTask,2)
+            dataRange = [];
+            startEvent = PreTask(1,segmentID);
+            if segmentID==size(PreTask,2)
+                endEvent = Stage(1,1);
+            else
+                endEvent = PreTask(1,segmentID+1);
+                exitIdx = find(strcmp({EEG.event.type},endEvent));
+                endIdx = exitIdx(find(find(strcmp({EEG.event.type},endEvent))>startIdx,1));
+            end
+            
+            startIdx = find(strcmp({EEG.event.type},startEvent));
+            endIdx = find(strcmp({EEG.event.type},endEvent));
+            
+            if length(startIdx) > 1
+                startIdx = startIdx(end);
+            end
+            
+            if isempty(dataRange)
+                dataRange = ceil(EEG.event(startIdx).latency) : floor(EEG.event(endIdx).latency);
+            end
+            keepIndex = find(sum(modout.v(:,dataRange),1) ~= 0);
+            PretaskModProb(:,segmentID) = mean(10.^modout.v(:,dataRange(keepIndex)),2);
+        end
+        
+        % plot sorted model plot
+        m = zeros(numMod,numStage + size(PreTask,2));
+        m(:,size(PreTask,2)+1:end) = modProbXState;
+        m(:,1:size(PreTask,2)) = PretaskModProb;
+        [~,I] = max(m,[],1);
+        I = unique(I,'stable');
+        SortMod = zeros(size(v));
+        for i=1:size(I,2)
+            SortMod(:,i) = v(:,I(i));
+        end
+        
+        diff = setdiff((1:numMod),I);
+        for j=1:(numMod-size(I,2))
+            SortMod(:,(size(I,2)+j)) = v(:,diff(j));
+        end
+        
+        
+        figure, imagesc(SortMod'); colorbar
+        xlabel('Time (sec)'); ylabel('Model ID');
+        set(gca,'fontsize',12);
+        set(gcf,'position',[50,150,1900,600]);
+        
+        
+        hold on,
+        % add event markers
+        for it = 1:length(EEG.event)
+            if ~strcmp(EEG.event(it).type,'press') &&  ...
+                    ~strcmp(EEG.event(it).type,'100') && ~strcmp(EEG.event(it).type,'enter') && ...
+                    ~strcmp(EEG.event(it).type,'768') && ~strcmp(EEG.event(it).type,'4') && ...
+                    ~strcmp(EEG.event(it).type,'instruct3') && ~strcmp(EEG.event(it).type,'instruct4') && ...
+                    ~strcmp(EEG.event(it).type,'prebase_instruct') &&...
+                    ~strcmp(EEG.event(it).type,'postbase_instruct')
+                x = EEG.event(it).latency/EEG.srate;
+                
+                if strcmp(EEG.event(it).type,'press1')
+                    h = plot([x x],[0.5 numMod+0.5],'w--','LineWidth',1);
+                    
+                elseif strcmp(EEG.event(it).type,'awe') || strcmp(EEG.event(it).type,'joy')||...
+                        strcmp(EEG.event(it).type,'happy') || strcmp(EEG.event(it).type,'love')||...
+                        strcmp(EEG.event(it).type,'compassion') || strcmp(EEG.event(it).type,'content')||...
+                        strcmp(EEG.event(it).type,'relief')|| strcmp(EEG.event(it).type,'excite')
+                    h = plot([x x],[0.5 numMod+0.5],'g-','LineWidth',1);
+                    
+                elseif strcmp(EEG.event(it).type,'frustration') || strcmp(EEG.event(it).type,'anger')||...
+                        strcmp(EEG.event(it).type,'sad') || strcmp(EEG.event(it).type,'grief')||...
+                        strcmp(EEG.event(it).type,'jealousy') || strcmp(EEG.event(it).type,'fear')||...
+                        strcmp(EEG.event(it).type,'disgust')
+                    h = plot([x x],[0.5 numMod+0.5],'r-','LineWidth',1);
+                    
+                else
+                    h = plot([x x],[0.5 numMod+0.5],'w-','LineWidth',1);
+                end
+                
+                if ~strcmp(EEG.event(it).type,'exit') && ~strcmp(EEG.event(it).type,'press1')
+                    text(x,0.5,EEG.event(it).type,'Rotation',30,'fontsize',12);
+                end
+            end
+        end
+        
+        for i=1:numMod
+            Models{i,:} = sprintf('Model %d',i);
+        end
+        
+        figname = sprintf('figures\\modelprob_sorted_S%dM%d_64ch.png',subj_id,numMod);
+        saveas(gcf,figname)
+        close
+        
     end
 end
 
-figname = sprintf('modelprob_S%dM%d_72ch_interp.png',subj_id,numMod);
-saveas(gcf,figname)
+
+%% figure 2: temporal dynamics for each emotion
 
 
-%%
-LLt = tmp;
-norm_LLt = bsxfun(@rdivide,LLt,sum(LLt));
 
-numMod = modout.num_models;
-v = zeros(ceil(EEG.xmax/walkLen),numMod);
-
-for it = 1:ceil(EEG.xmax/walkLen)
-    dataRange = (it-1)*walkLen*EEG.srate+1 : min(EEG.pnts, (it-1)*walkLen*EEG.srate+winLen*EEG.srate);
-    v(it,:) = mean(norm_LLt(:,dataRange(keepIndex)),2);
-end
-
-figure, imagesc(v'); colorbar
-xlabel('Time (sec)'); ylabel('Model ID'); 
-set(gca,'fontsize',12); 
-set(gcf,'position',[50,150,1450,450]);
+%% figure 3: probability-based model clustering and resulting prob distribution
 
 
-%% figure 2: bar plot of mean model probability in each emotional states (single subject)
-numStage = 10;
-
-% compute mean probability in each stage
-modProbXState = zeros(numMod,numStage);
-
-for segmentID = 1:numStage
-    
-    % define start and end events for each stage
-    dataRange = [];
-    if segmentID == 1
-        startEvent = 'firstBaseline'; endEvent = 'endFirstBaseline';
-    elseif segmentID == 2
-        startEvent = 'startPreInductionInterview'; endEvent = 'endPreInductionInterview';
-    elseif segmentID == 3
-        startEvent = 'startInduction'; endEvent = 'endInduction';
-    elseif segmentID == 4
-        startEvent = 'beginStairDescent'; endEvent = 'endStairDescent';
-    elseif segmentID == 5
-        startEvent = 'sitInChair'; endEvent = 'Crown';
-    elseif segmentID == 6
-        startEvent = 'Crown'; endEvent = 'seeingLight';
-    elseif segmentID == 7
-        startEvent = 'seeingLight'; endEvent = 'navigateLight';
-    elseif segmentID == 8
-        startEvent = 'navigateLight'; endEvent = 'beginStairAscent'; % 'removeCrown';
-    elseif segmentID == 9
-        startEvent = 'beginStairAscent'; endEvent = 'endStairAscent';
-    else
-        startEvent = 'finalBaseline'; endEvent = 'endFinalBaseline';
-    end
-    
-    startIdx = find(strcmp({EEG.event.type},startEvent));
-    endIdx = find(strcmp({EEG.event.type},endEvent));
-    
-    if length(startIdx) > 1
-        startIdx = startIdx(end);
-    end
-    if segmentID == 10 && isempty(endIdx)
-        dataRange = ceil(EEG.event(startIdx).latency) : EEG.pnts;
-    end
-    
-    if isempty(dataRange)
-        dataRange = ceil(EEG.event(startIdx).latency) : floor(EEG.event(endIdx).latency);
-    end
-    keepIndex = find(sum(modout.v(:,dataRange),1) ~= 0);
-    modProbXState(:,segmentID) = mean(10.^modout.v(:,dataRange(keepIndex)),2);
-end
-
-% plot mean probability 
-figure, ax = axes;
-h = bar(modProbXState','BarWidth',1); 
-xlabel('Meditation States'); ylabel('Model Probabilities');
-set(gca,'XTickLabel',{'Baseline','PreInduction','Induction','StairDescent','SitInChair','Crown','SeeLight','NavigateLight','StairAscent','FinalBaseline'},'XTick',1:size(modProbXState,2),'XTickLabelRotation',60); 
-set(gca,'fontsize',14,'fontweight','bold'); set(gcf,'Units','centimeters','Position',[5 5 30 20]);
-legend('Model 1','Model 2','Model 3','Model 4','Model 5','Model 6','Model 7','Model 8');
-
-cmap = [0         0.4470    0.7410
-        0.8500    0.3250    0.0980 
-        0.9290    0.6940    0.1250 
-        0.4940    0.1840    0.5560 
-        0.4660    0.6740    0.1880  
-        0.3010    0.7450    0.9330 
-        0.6350    0.0780    0.1840
-        0         0         0
-        ]; 
-colormap(cmap);
+%% figure 4: IC clustering of each model cluster
 
 
-%% figure 3: directed graph to explore structure of clusters - show similarity between runs with diff # of models 
+%% figure 5: Dipole density plots of each model cluster
+
+
+
+
+
+%% figure S1: directed graph to explore structure of clusters - show similarity between runs with diff # of models
 subj_id = 2;
 filename = sprintf('EEG_Subj_%d.set',subj_id);
 EEG = pop_loadset('filename',filename,'filepath','C:\Users\shawn\Desktop\Emotion\');
@@ -154,7 +251,7 @@ for numMod = 3:20
     amicaout_dir = sprintf('Subj%d_M%d',subj_id,numMod);
     ourdir = ['C:\Users\shawn\Desktop\Emotion\' amicaout_dir];
     modout = loadmodout15(ourdir);
-        
+    
     % non-overlapping sliding window average of model probabilities
     winLen = 1;     % sec
     walkLen = 1;    % sec
@@ -185,7 +282,7 @@ for it = 1:length(modProb)-1
     nan_index_2 = find(isnan(modProb{it+1}(:,1)));
     keepIndex = setdiff(1:size(modProb{it},1), unique([nan_index_1; nan_index_2]));
     
-    % compute cross correlation 
+    % compute cross correlation
     [corr,indx,indy,corrs] = matcorr(modProb{it}(keepIndex,:)',modProb{it+1}(keepIndex,:)');
     
     % force 1-to-1 mapping (only takes max-corr match)
@@ -206,19 +303,19 @@ for it = 1:length(modProb)-1
     
     nodeCount = nodeCount + it+2;
     nodeLabel = [nodeLabel, 1:(it+2)];
-
+    
 end
 nodeLabel = [nodeLabel,1:(it+3)];
 
 % G = digraph(source,target,weights);
 G = graph(source,target,weights);
 figure, h = plot(G,'EdgeLabel',fix((1-G.Edges.Weight)*10^3)/10^3, ...
-                   'LineWidth',20*((1-G.Edges.Weight)-min((1-G.Edges.Weight)))+0.5, ...
-                   'NodeLabel',[]); %nodeLabel);
+    'LineWidth',20*((1-G.Edges.Weight)-min((1-G.Edges.Weight)))+0.5, ...
+    'NodeLabel',[]); %nodeLabel);
 set(gca,'XTickLabel',{},'YTick',1:11,'YTickLabel',num2cell(13:-1:3),'Fontsize',14)
 set(gcf,'Position',[0,0,1000, 800])
 for i=1:length(h.XData)
-   text(h.XData(i)+0.1,h.YData(i),num2str(nodeLabel(i)),'fontsize',14);
+    text(h.XData(i)+0.1,h.YData(i),num2str(nodeLabel(i)),'fontsize',14);
 end
 
 % compute distances of the shortest path between all model pairs
@@ -228,8 +325,6 @@ d_final = d((end-max_numMode+1):end, (end-max_numMode+1):end);
 figure, imagesc(d);
 figure, imagesc(d_final);
 % target((end-numMod_list(end)+1):end)
-
-
 
 
 
@@ -250,7 +345,7 @@ EEG = eeg_checkset(EEG);
 pop_topoplot(EEG,0,[1:20]);
 
 
-%% Figure 5. Parameter-based model clustering
+%% Figure S2. Parameter-based model clustering
 subj_id = 2;
 numMod = 20;
 
@@ -289,7 +384,7 @@ end
 % hierarchical clustering
 clusterLink = linkage(distVec,linkMethod);
 
-figure, 
+figure,
 [H,T,outperm] = dendrogram(clusterLink, 0);
 ylabel('Norm num of 0.8 correlated ICs')
 set(gca,'fontsize',12);
@@ -325,7 +420,7 @@ for it = 1:length(numMod)
     
     % Corrected AIC
     CAIC(it) = 2*numPara - 2*sum(modout.Lt) + 2*numPara*(numPara+1) / (length(modout.Lt)-num_rej_data-numPara-1);
-
+    
     LL_sum(it) = sum(modout.Lt);
 end
 
@@ -351,6 +446,25 @@ figure,
 plot(numMod,LL_sum)
 
 
+
+%%
+LLt = tmp;
+norm_LLt = bsxfun(@rdivide,LLt,sum(LLt));
+
+numMod = modout.num_models;
+v = zeros(ceil(EEG.xmax/walkLen),numMod);
+
+for it = 1:ceil(EEG.xmax/walkLen)
+    dataRange = (it-1)*walkLen*EEG.srate+1 : min(EEG.pnts, (it-1)*walkLen*EEG.srate+winLen*EEG.srate);
+    v(it,:) = mean(norm_LLt(:,dataRange(keepIndex)),2);
+end
+
+figure, imagesc(v'); colorbar
+xlabel('Time (sec)'); ylabel('Model ID');
+set(gca,'fontsize',12);
+set(gcf,'position',[50,150,1450,450]);
+
+
 %% microstate analysis
 % EEG = pop_loadset('filename','EEG_Subj_2.set','filepath','C:\\Users\\shawn\\Desktop\\Emotion\\');
 % EEG = eeg_checkset( EEG );
@@ -359,7 +473,7 @@ plot(numMod,LL_sum)
 % [ALLEEG,EEG,com] = pop_ShowIndMSMaps(EEG, 6, 0, ALLEEG);
 % com = pop_ShowIndMSDyn(ALLEEG, EEG, 0, struct('b',0,'lambda',3.000000e-01,'PeakFit',1,'nClasses',6,'BControl',1));
 % EEG = eeg_checkset( EEG );
-% 
+%
 % tmp = load('MSClass_6.mat');
 % MSClass = tmp.MSClass;
 
