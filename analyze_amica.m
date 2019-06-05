@@ -226,7 +226,182 @@ end
 
 
 
-%% figure 3: probability-based model clustering and resulting prob distribution
+%% figure 3-1: probability-based model clustering and resulting prob distribution
+SubjNo = [1:2, 4:17, 19:21, 23:29, 31, 35]; % 4 5 6 8 9 10 13 16 17 20 21 24 26 27 28 31 35];
+filepath = '/data/projects/Shawn/2019_Emogery/';
+Emotions = {'relax','awe','joy','happy','love','compassion','content','relief','excite',...
+            'frustration','anger','sad','grief','jealousy','fear','disgust'};
+numStage = length(Emotions);
+numMod = 20;
+
+eventLabelIdx = zeros(numStage,3,length(SubjNo));
+modoutstack = [];
+modProbXStateXSubj = [];
+modProbXStateXSubj_press = [];
+errorReport = {};
+
+for subj_id = 1:length(SubjNo) 
+    
+    % load EEG
+    filename = sprintf('EEG_Subj_%d_64ch_info.set',SubjNo(subj_id));
+    EEG = pop_loadset('filename',filename,'filepath',filepath);
+    
+    % load AMICA output
+    outdir = [filepath, sprintf('amicaout/emotion_S%d_M%d_64ch',SubjNo(subj_id),numMod)];
+    modout = loadmodout15(outdir);
+    
+    i = 1;
+    Stage = {};
+    for it = 1:length(EEG.event)        
+        if strcmp(EEG.event(it).type,'awe') || strcmp(EEG.event(it).type,'joy')||...
+                strcmp(EEG.event(it).type,'happy') || strcmp(EEG.event(it).type,'love')||...
+                strcmp(EEG.event(it).type,'compassion') || strcmp(EEG.event(it).type,'content')||...
+                strcmp(EEG.event(it).type,'relief')|| strcmp(EEG.event(it).type,'excite')||...
+                strcmp(EEG.event(it).type,'frustration') || strcmp(EEG.event(it).type,'anger')||...
+                strcmp(EEG.event(it).type,'sad') || strcmp(EEG.event(it).type,'grief')||...
+                strcmp(EEG.event(it).type,'jealousy') || strcmp(EEG.event(it).type,'fear')||...
+                strcmp(EEG.event(it).type,'disgust') || strcmp(EEG.event(it).type,'relax')
+            Stage{1,i} = EEG.event(it).type;
+            i = i+1;
+        end
+    end
+
+    % compute mean probability in each stage
+    modProbXState = zeros(numMod,numStage);
+    modProbXState_press = zeros(numMod,numStage);
+    
+    % find press1
+    press1 = find(strcmp({EEG.event.type},'press1'));
+    exitIdx = find(strcmp({EEG.event.type},'exit'));
+        
+    for segmentID = 1:size(Stage,2)
+        dataRange = [];
+        dataRange_press = [];
+        startEvent = Stage(1,segmentID); 
+
+        % find the start of each trial
+        startIdx = find(strcmp({EEG.event.type},startEvent));
+        eventLabelIdx(strcmp(Emotions,startEvent),1,subj_id) = EEG.event(startIdx).latency;
+        
+        % find press1
+        pressIdx = press1(find(press1>startIdx,1));
+        eventLabelIdx(strcmp(Emotions,startEvent),2,subj_id) = EEG.event(pressIdx).latency;
+
+        % find the end of each trial
+        endIdx = exitIdx(find(exitIdx>startIdx,1));
+        eventLabelIdx(strcmp(Emotions,startEvent),3,subj_id) = EEG.event(endIdx).latency;
+
+        % handle special case
+        if length(startIdx) > 1
+            startIdx = startIdx(end);
+            errorReport{end+1} = sprintf('duplicate trial: %s, Subj %d\n',startEvent{1},SubjNo(subj_id));
+        end
+        if pressIdx > endIdx
+            pressIdx = startIdx;
+            errorReport{end+1} = sprintf('missing press event: %s, Subj %d\n',startEvent{1},SubjNo(subj_id));
+        end
+        if segmentID == 10 && isempty(endIdx)
+            dataRange = ceil(EEG.event(startIdx).latency) : EEG.pnts;
+            dataRange_press = ceil(EEG.event(pressIdx).latency) : EEG.pnts;
+            errorReport{end+1} = sprintf('missing exit event: %s, Subj %d\n',startEvent{1},SubjNo(subj_id));
+        end
+
+        % specify data range
+        if isempty(dataRange) 
+            dataRange = ceil(EEG.event(startIdx).latency) : floor(EEG.event(endIdx).latency);
+            dataRange_press = ceil(EEG.event(pressIdx).latency) : floor(EEG.event(endIdx).latency);
+        end
+        
+        % compute mean model probability from start to end
+        keepIndex = find(sum(modout.v(:,dataRange),1) ~= 0);
+        modProbXState(:,strcmp(Stage(1,segmentID),Emotions)) = ...
+            mean(10.^modout.v(:,dataRange(keepIndex)),2);             
+        
+        % compute mean model probability from press1 to end
+        keepIndex_press = find(sum(modout.v(:,dataRange_press),1) ~= 0);
+        modProbXState_press(:,strcmp(Stage(1,segmentID),Emotions)) = ...
+            mean(10.^modout.v(:,dataRange_press(keepIndex_press)),2);
+
+    end
+    modProbXStateXSubj = [modProbXStateXSubj; modProbXState];
+    modProbXStateXSubj_press = [modProbXStateXSubj_press; modProbXState_press];
+end
+
+save('modProbXStateXSubj.mat','modProbXStateXSubj');
+save('modProbXStateXSubj_press.mat','modProbXStateXSubj_press');
+
+
+%% figure 3-2: plot dendrogram of subject models
+
+modProb = modProbXStateXSubj_press;
+
+% compute distance metric: 1 - correlation of model prob. features
+[rho] = corr(modProb');
+distMat = 1-rho;
+% figure, imagesc(distMat);
+
+% prepare distance vector: a vector representation of a distance matrix
+% (consistent with pdist () output format)
+distVec = [];
+for it = 1:size(distMat,1)-1
+    distVec = [distVec, distMat(it,it+1:end)];
+end
+
+% Agglomerative hierarchical cluster tree
+clusterLink = linkage(distVec,'average');
+leafOrder = optimalleaforder(clusterLink,distVec,'Criteria','group');
+
+% find clusters
+num_cluster = 20;
+cutoff_th = median([clusterLink(end-num_cluster+1,3), clusterLink(end-num_cluster+2,3)]);
+
+figure('Position', [50 50 1400 500]),
+[H,~,outperm] = dendrogram(clusterLink,0,'ColorThreshold',cutoff_th,'Reorder',leafOrder);
+set(H,'LineWidth',1.5)
+axis off;
+% saveas(gcf,'HCtree_modprob_28subj','png');
+
+figure('Position', [50 50 1400 1400]),
+rho_sorted = corr(modProb(outperm,:)');
+imagesc(rho_sorted);
+colorbar; xlabel('AMICA Models'); ylabel('AMICA Models')
+set(gca,'fontsize',14)
+% saveas(gcf,'HC_modprob_28subj','png');
+
+
+%% figure 3-3: plot mean model probability of model clusters
+figure;
+[~,T] = dendrogram(clusterLink,num_cluster,'Reorder',leafOrder);
+
+modelIdx = cell(1,num_cluster);
+modProb_cluster = zeros(num_cluster,numStage);
+std_modProb_cluster = zeros(num_cluster,numStage);
+for cluster_id = 1:num_cluster
+    modelIdx{cluster_id} = find(T == cluster_id);
+    modProb_cluster(cluster_id,:) = mean(modProb(modelIdx{cluster_id},:));
+    std_modProb_cluster(cluster_id,:) = std(modProb(modelIdx{cluster_id},:));
+end
+
+% clusterOrder = [1,4,8,2,9,14,11,3,16,13,19,15,12,10,6,7,17,5,20,18];  % start 
+clusterOrder = [9,1,12,15,3,16,11,8,2,5,13,10,19,20,6,7,18,4,17,14];    % press
+
+figure, imagesc(modProb_cluster(clusterOrder,:)');
+set(gca,'YTick',1:numStage,'YTickLabel',Emotions);
+set(gca,'XTick',1:num_cluster,'XTickLabel',clusterOrder);
+set(gca,'fontsize',12,'fontweight','bold'); colorbar
+set(gcf,'position',[50,50,750,550]);
+xlabel('Cluster ID');
+% saveas(gcf,'AvgModProc_cluster_press','png');
+
+figure, imagesc(std_modProb_cluster(clusterOrder,:)');
+set(gca,'YTick',1:numStage,'YTickLabel',Emotions);
+set(gca,'XTick',1:num_cluster,'XTickLabel',clusterOrder);
+set(gca,'fontsize',12,'fontweight','bold'); colorbar
+set(gcf,'position',[50,50,750,550]);
+xlabel('Cluster ID');
+% saveas(gcf,'StdModProc_cluster_press','png');
+
+
 
 
 %% figure 4: IC clustering of each model cluster
